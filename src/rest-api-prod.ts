@@ -1,18 +1,27 @@
 import express, { Request, Response, NextFunction } from 'express';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import { VivanunciosScraper } from './scrapers/vivanuncios.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.REST_API_PORT || process.env.PORT || 3002;
 
-// EasyBroker API configuration
+// API configurations
 const EASYBROKER_API_KEY = process.env.EASYBROKER_API_KEY || '';
+const SCRAPEDO_TOKEN = process.env.SCRAPEDO_TOKEN || '';
+
 // Use staging URL for test key, production URL for real keys
 const isTestKey = EASYBROKER_API_KEY === 'l7u502p8v46ba3ppgvj5y2aad50lb9';
 const EASYBROKER_API_URL = isTestKey ? 'https://api.stagingeb.com/v1' : 'https://api.easybroker.com/v1';
+
+// Determine data sources
 const USE_MOCK_DATA = !EASYBROKER_API_KEY || EASYBROKER_API_KEY === 'your_key_here';
+const HAS_SCRAPEDO = SCRAPEDO_TOKEN && SCRAPEDO_TOKEN !== 'your_scrapedo_token_here';
+
+// Initialize scrapers
+const vivanunciosScraper = HAS_SCRAPEDO ? new VivanunciosScraper(SCRAPEDO_TOKEN) : null;
 
 app.use(express.json());
 
@@ -131,13 +140,21 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 app.get('/health', (req: Request, res: Response) => {
+  const dataSources = [];
+  if (USE_MOCK_DATA) dataSources.push('mock');
+  if (!USE_MOCK_DATA) dataSources.push('easybroker');
+  if (HAS_SCRAPEDO) dataSources.push('vivanuncios');
+
   const health = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     version: '1.0.0',
-    dataSource: USE_MOCK_DATA ? 'mock' : 'easybroker',
-    apiKeyConfigured: !USE_MOCK_DATA
+    dataSources,
+    apiKeysConfigured: {
+      easybroker: !USE_MOCK_DATA,
+      scrapedo: HAS_SCRAPEDO
+    }
   };
   
   sendSuccess(res, health);
@@ -202,6 +219,9 @@ async function fetchFromEasyBroker(params: any) {
 app.get('/properties', validatePropertySearch, async (req: Request, res: Response) => {
   try {
     const { city, zipCode, area, priceMin, priceMax, bedrooms } = req.query;
+    const allProperties = [];
+    const sources = [];
+    const errors = [];
 
     // Use mock data if no API key is configured
     if (USE_MOCK_DATA) {
@@ -227,26 +247,58 @@ app.get('/properties', validatePropertySearch, async (req: Request, res: Respons
         filtered = filtered.filter(p => p.bedrooms === Number(bedrooms));
       }
 
-      sendSuccess(res, {
-        properties: filtered,
-        total: filtered.length,
-        source: 'mock',
-        query: req.query
-      });
+      allProperties.push(...filtered.map(p => ({ ...p, source: 'mock' })));
+      sources.push('mock');
     } else {
       // Fetch from EasyBroker API
-      const result = await fetchFromEasyBroker({
-        city: city as string,
-        priceMin: priceMin as string,
-        priceMax: priceMax as string,
-        bedrooms: bedrooms as string
-      });
-
-      sendSuccess(res, {
-        ...result,
-        query: req.query
-      });
+      try {
+        const result = await fetchFromEasyBroker({
+          city: city as string,
+          priceMin: priceMin as string,
+          priceMax: priceMax as string,
+          bedrooms: bedrooms as string
+        });
+        allProperties.push(...result.properties);
+        sources.push('easybroker');
+      } catch (error: any) {
+        console.error('EasyBroker error:', error.message);
+        errors.push({ source: 'easybroker', error: error.message });
+      }
     }
+
+    // Fetch from Vivanuncios if Scrape.do is configured
+    if (HAS_SCRAPEDO && vivanunciosScraper) {
+      try {
+        const vivanunciosProperties = await vivanunciosScraper.scrapeProperties({
+          city: city as string,
+          priceMin: priceMin as string,
+          priceMax: priceMax as string,
+          bedrooms: bedrooms as string
+        });
+        
+        allProperties.push(...vivanunciosProperties.map(p => ({ 
+          ...p, 
+          source: 'vivanuncios' 
+        })));
+        sources.push('vivanuncios');
+      } catch (error: any) {
+        console.error('Vivanuncios error:', error.message);
+        errors.push({ source: 'vivanuncios', error: error.message });
+      }
+    }
+
+    // Remove duplicates based on title and price
+    const uniqueProperties = Array.from(
+      new Map(allProperties.map(p => [`${p.title}-${p.price}`, p])).values()
+    );
+
+    sendSuccess(res, {
+      properties: uniqueProperties,
+      total: uniqueProperties.length,
+      sources,
+      errors: errors.length > 0 ? errors : undefined,
+      query: req.query
+    });
   } catch (error) {
     console.error('Error searching properties:', error);
     sendError(res, 500, 'Failed to search properties', 'SEARCH_ERROR');

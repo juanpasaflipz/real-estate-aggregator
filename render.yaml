@@ -17,3 +17,5 @@ services:
         sync: false
       - key: EASYBROKER_API_KEY
         sync: false
+      - key: SCRAPEDO_TOKEN
+        sync: false
