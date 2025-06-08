@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import axios from 'axios';
 import dotenv from 'dotenv';
-import { VivanunciosScraper } from './scrapers/vivanuncios.js';
+import { ScrapeDoService } from './services/scrapedo.js';
 
 dotenv.config();
 
@@ -20,8 +20,8 @@ const EASYBROKER_API_URL = isTestKey ? 'https://api.stagingeb.com/v1' : 'https:/
 const USE_MOCK_DATA = !EASYBROKER_API_KEY || EASYBROKER_API_KEY === 'your_key_here';
 const HAS_SCRAPEDO = SCRAPEDO_TOKEN && SCRAPEDO_TOKEN !== 'your_scrapedo_token_here';
 
-// Initialize scrapers
-const vivanunciosScraper = HAS_SCRAPEDO ? new VivanunciosScraper(SCRAPEDO_TOKEN) : null;
+// Initialize services
+const scrapeDoService = HAS_SCRAPEDO ? new ScrapeDoService(SCRAPEDO_TOKEN) : null;
 
 app.use(express.json());
 
@@ -140,18 +140,13 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 app.get('/health', (req: Request, res: Response) => {
-  const dataSources = [];
-  if (USE_MOCK_DATA) dataSources.push('mock');
-  if (!USE_MOCK_DATA) dataSources.push('easybroker');
-  if (HAS_SCRAPEDO) dataSources.push('vivanuncios');
-
   const health = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     version: '1.0.0',
-    dataSources,
-    apiKeysConfigured: {
+    dataSource: USE_MOCK_DATA ? 'mock' : 'easybroker',
+    servicesAvailable: {
       easybroker: !USE_MOCK_DATA,
       scrapedo: HAS_SCRAPEDO
     }
@@ -219,9 +214,6 @@ async function fetchFromEasyBroker(params: any) {
 app.get('/properties', validatePropertySearch, async (req: Request, res: Response) => {
   try {
     const { city, zipCode, area, priceMin, priceMax, bedrooms } = req.query;
-    const allProperties = [];
-    const sources = [];
-    const errors = [];
 
     // Use mock data if no API key is configured
     if (USE_MOCK_DATA) {
@@ -247,61 +239,78 @@ app.get('/properties', validatePropertySearch, async (req: Request, res: Respons
         filtered = filtered.filter(p => p.bedrooms === Number(bedrooms));
       }
 
-      allProperties.push(...filtered.map(p => ({ ...p, source: 'mock' })));
-      sources.push('mock');
+      sendSuccess(res, {
+        properties: filtered,
+        total: filtered.length,
+        source: 'mock',
+        query: req.query
+      });
     } else {
       // Fetch from EasyBroker API
-      try {
-        const result = await fetchFromEasyBroker({
-          city: city as string,
-          priceMin: priceMin as string,
-          priceMax: priceMax as string,
-          bedrooms: bedrooms as string
-        });
-        allProperties.push(...result.properties);
-        sources.push('easybroker');
-      } catch (error: any) {
-        console.error('EasyBroker error:', error.message);
-        errors.push({ source: 'easybroker', error: error.message });
-      }
+      const result = await fetchFromEasyBroker({
+        city: city as string,
+        priceMin: priceMin as string,
+        priceMax: priceMax as string,
+        bedrooms: bedrooms as string
+      });
+
+      sendSuccess(res, {
+        ...result,
+        query: req.query
+      });
     }
-
-    // Fetch from Vivanuncios if Scrape.do is configured
-    if (HAS_SCRAPEDO && vivanunciosScraper) {
-      try {
-        const vivanunciosProperties = await vivanunciosScraper.scrapeProperties({
-          city: city as string,
-          priceMin: priceMin as string,
-          priceMax: priceMax as string,
-          bedrooms: bedrooms as string
-        });
-        
-        allProperties.push(...vivanunciosProperties.map(p => ({ 
-          ...p, 
-          source: 'vivanuncios' 
-        })));
-        sources.push('vivanuncios');
-      } catch (error: any) {
-        console.error('Vivanuncios error:', error.message);
-        errors.push({ source: 'vivanuncios', error: error.message });
-      }
-    }
-
-    // Remove duplicates based on title and price
-    const uniqueProperties = Array.from(
-      new Map(allProperties.map(p => [`${p.title}-${p.price}`, p])).values()
-    );
-
-    sendSuccess(res, {
-      properties: uniqueProperties,
-      total: uniqueProperties.length,
-      sources,
-      errors: errors.length > 0 ? errors : undefined,
-      query: req.query
-    });
   } catch (error) {
     console.error('Error searching properties:', error);
     sendError(res, 500, 'Failed to search properties', 'SEARCH_ERROR');
+  }
+});
+
+// Scrape endpoint - only available if Scrape.do token is configured
+app.post('/scrape', async (req: Request, res: Response) => {
+  if (!scrapeDoService) {
+    return sendError(res, 503, 'Scrape.do service not configured', 'SERVICE_UNAVAILABLE');
+  }
+
+  const { url, render, useSuper, geoCode, customHeaders, format } = req.body;
+
+  if (!url) {
+    return sendError(res, 400, 'URL parameter is required', 'MISSING_URL');
+  }
+
+  try {
+    const options = {
+      url,
+      render: render || false,
+      super: useSuper || false,
+      geoCode,
+      customHeaders
+    };
+
+    if (format === 'json') {
+      const data = await scrapeDoService.scrapeJSON(options);
+      sendSuccess(res, data);
+    } else {
+      const content = await scrapeDoService.scrape(options);
+      sendSuccess(res, { content, url });
+    }
+  } catch (error: any) {
+    console.error('Scraping error:', error);
+    sendError(res, 500, `Scraping failed: ${error.message}`, 'SCRAPE_ERROR');
+  }
+});
+
+// Check Scrape.do credits endpoint
+app.get('/scrape/credits', async (req: Request, res: Response) => {
+  if (!scrapeDoService) {
+    return sendError(res, 503, 'Scrape.do service not configured', 'SERVICE_UNAVAILABLE');
+  }
+
+  try {
+    const credits = await scrapeDoService.checkCredits();
+    sendSuccess(res, credits);
+  } catch (error: any) {
+    console.error('Credits check error:', error);
+    sendError(res, 500, `Failed to check credits: ${error.message}`, 'CREDITS_ERROR');
   }
 });
 
@@ -318,4 +327,8 @@ app.listen(PORT, () => {
   console.log(`REST API server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`Properties endpoint: http://localhost:${PORT}/properties`);
+  if (HAS_SCRAPEDO) {
+    console.log(`Scrape endpoint: POST http://localhost:${PORT}/scrape`);
+    console.log(`Credits check: GET http://localhost:${PORT}/scrape/credits`);
+  }
 });
