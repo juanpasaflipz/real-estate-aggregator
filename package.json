@@ -1,0 +1,37 @@
+{
+  "name": "mcp-server-real-estate",
+  "version": "1.0.0",
+  "description": "MCP server for Mexico Real Estate Aggregator",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx --watch src/index.ts",
+    "rest-api": "tsx src/rest-api.ts",
+    "rest-api:dev": "tsx --watch src/rest-api.ts",
+    "test": "tsx src/test-client.ts",
+    "test-api": "tsx src/simple-test.ts",
+    "test-rest": "tsx src/test-rest-api.ts",
+    "mock-api": "tsx src/mock-api.ts"
+  },
+  "keywords": [
+    "mcp",
+    "real-estate",
+    "server"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "axios": "^1.6.2",
+    "dotenv": "^16.5.0",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/express": "^4.17.21",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.3"
+  }
+}
