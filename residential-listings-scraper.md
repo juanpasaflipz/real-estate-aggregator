@@ -1,32 +1,31 @@
-## 🎯 Goal:
-Create a Python script that:
+### 🎯 Goal:
+Build a Node.js script that:
 1. Fetches rental property listings from `https://www.vivanuncios.com.mx/s-renta-inmuebles/distrito-federal/v1c30l1029p1`
-2. Uses the `scrape.do` API to bypass anti-bot protection
-3. Parses the HTML content into structured JSON
-4. Outputs a list of results with these fields:
+2. Uses the `scrape.do` API to bypass bot protection
+3. Parses HTML into structured JSON
+4. Outputs a list of listings with:
    - `title`
    - `price`
    - `location`
    - `url` (absolute link to listing)
 
-## 🔐 Input Parameters:
-- `SCRAPE_DO_API_KEY` (string): User’s API key from scrape.do
+## 🔐 Inputs:
+- `SCRAPE_DO_API_KEY` (string): User's API key for scrape.do
+- `render` (optional boolean): If true, enable JavaScript rendering via `&render=true`
 
 ## 🔧 Tech Stack:
-- `requests` for HTTP requests
-- `BeautifulSoup` (from `bs4`) for HTML parsing
-
-## 🔁 Optional:
-- Allow toggling JavaScript rendering via `render=true` in query string
+Use the following Node.js tools:
+- `axios` for HTTP requests
+- `cheerio` for HTML parsing (jQuery-like syntax)
 
 ## 🧠 Claude Code Instructions:
-Write clean, modular, and commented code to:
-- Accept a `url` and `api_key` as variables
-- Fetch content from Scrape.do (`https://api.scrape.do`)
-- Parse HTML to extract data
-- Return the results as a JSON list
+Write clean and well-commented JavaScript code that:
+- Accepts `url` and `apiKey` variables
+- Makes a GET request to `https://api.scrape.do`
+- Extracts the required listing data using `cheerio`
+- Logs the final JSON array to the console
 
-## 🧪 Sample Output:
+## 📦 Expected Output:
 ```json
 [
   {
