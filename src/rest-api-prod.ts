@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { ScrapeDoService } from './services/scrapedo.js';
+import { PropertyScraper } from './services/property-scraper.js';
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ const HAS_SCRAPEDO = SCRAPEDO_TOKEN && SCRAPEDO_TOKEN !== 'your_scrapedo_token_h
 
 // Initialize services
 const scrapeDoService = HAS_SCRAPEDO ? new ScrapeDoService(SCRAPEDO_TOKEN) : null;
+const propertyScraper = HAS_SCRAPEDO ? new PropertyScraper(SCRAPEDO_TOKEN) : null;
 
 app.use(express.json());
 
@@ -140,12 +142,17 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 app.get('/health', (req: Request, res: Response) => {
+  const dataSources = [];
+  if (USE_MOCK_DATA) dataSources.push('mock');
+  if (!USE_MOCK_DATA) dataSources.push('easybroker');
+  if (HAS_SCRAPEDO) dataSources.push('vivanuncios', 'inmuebles24');
+  
   const health = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     version: '1.0.0',
-    dataSource: USE_MOCK_DATA ? 'mock' : 'easybroker',
+    dataSources,
     servicesAvailable: {
       easybroker: !USE_MOCK_DATA,
       scrapedo: HAS_SCRAPEDO
@@ -214,6 +221,9 @@ async function fetchFromEasyBroker(params: any) {
 app.get('/properties', validatePropertySearch, async (req: Request, res: Response) => {
   try {
     const { city, zipCode, area, priceMin, priceMax, bedrooms } = req.query;
+    const allProperties = [];
+    const sources = [];
+    const errors = [];
 
     // Use mock data if no API key is configured
     if (USE_MOCK_DATA) {
@@ -239,31 +249,71 @@ app.get('/properties', validatePropertySearch, async (req: Request, res: Respons
         filtered = filtered.filter(p => p.bedrooms === Number(bedrooms));
       }
 
-      sendSuccess(res, {
-        properties: filtered,
-        total: filtered.length,
-        source: 'mock',
-        query: req.query
-      });
+      allProperties.push(...filtered);
+      sources.push('mock');
     } else {
       // Fetch from EasyBroker API
-      const result = await fetchFromEasyBroker({
-        city: city as string,
-        priceMin: priceMin as string,
-        priceMax: priceMax as string,
-        bedrooms: bedrooms as string
-      });
-
-      sendSuccess(res, {
-        ...result,
-        query: req.query
-      });
+      try {
+        const result = await fetchFromEasyBroker({
+          city: city as string,
+          priceMin: priceMin as string,
+          priceMax: priceMax as string,
+          bedrooms: bedrooms as string
+        });
+        allProperties.push(...result.properties);
+        sources.push('easybroker');
+      } catch (error: any) {
+        console.error('EasyBroker error:', error.message);
+        errors.push({ source: 'easybroker', error: error.message });
+      }
     }
+
+    // Fetch from scraped sources if Scrape.do is configured
+    if (HAS_SCRAPEDO && propertyScraper) {
+      try {
+        const scrapedProperties = await propertyScraper.scrapeAllSources({
+          city: city as string,
+          priceMin: priceMin as string,
+          priceMax: priceMax as string,
+          bedrooms: bedrooms as string
+        });
+        
+        allProperties.push(...scrapedProperties);
+        sources.push('vivanuncios', 'inmuebles24');
+      } catch (error: any) {
+        console.error('Scraping error:', error.message);
+        errors.push({ source: 'scraping', error: error.message });
+      }
+    }
+
+    // Remove duplicates based on title similarity
+    const uniqueProperties = removeDuplicates(allProperties);
+
+    sendSuccess(res, {
+      properties: uniqueProperties,
+      total: uniqueProperties.length,
+      sources,
+      errors: errors.length > 0 ? errors : undefined,
+      query: req.query
+    });
   } catch (error) {
     console.error('Error searching properties:', error);
     sendError(res, 500, 'Failed to search properties', 'SEARCH_ERROR');
   }
 });
+
+// Helper function to remove duplicate properties
+function removeDuplicates(properties: any[]): any[] {
+  const seen = new Set<string>();
+  return properties.filter(property => {
+    const key = `${property.title.toLowerCase()}-${property.price}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
 
 // Scrape endpoint - only available if Scrape.do token is configured
 app.post('/scrape', async (req: Request, res: Response) => {

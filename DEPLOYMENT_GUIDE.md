@@ -45,9 +45,8 @@ In Render dashboard, go to "Environment" tab and add:
 NODE_ENV=production
 REST_API_PORT=3002
 API_BASE_URL=https://your-app.onrender.com
-INMUEBLES24_API_KEY=your_actual_key_here
-VIVANUNCIOS_API_KEY=your_actual_key_here
 EASYBROKER_API_KEY=your_actual_key_here
+SCRAPEDO_TOKEN=your_actual_key_here
 ```
 
 ⚠️ **Important**: Replace `your_actual_key_here` with real API keys!
