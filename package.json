@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "start:prod": "node dist/rest-api.js",
+    "start:prod": "node dist/rest-api-prod.js",
     "dev": "tsx --watch src/index.ts",
     "rest-api": "tsx src/rest-api.ts",
     "rest-api:dev": "tsx --watch src/rest-api.ts",
