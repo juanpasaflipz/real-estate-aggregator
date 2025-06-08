@@ -7,6 +7,13 @@ dotenv.config();
 const app = express();
 const PORT = process.env.REST_API_PORT || process.env.PORT || 3002;
 
+// EasyBroker API configuration
+const EASYBROKER_API_KEY = process.env.EASYBROKER_API_KEY || '';
+// Use staging URL for test key, production URL for real keys
+const isTestKey = EASYBROKER_API_KEY === 'l7u502p8v46ba3ppgvj5y2aad50lb9';
+const EASYBROKER_API_URL = isTestKey ? 'https://api.stagingeb.com/v1' : 'https://api.easybroker.com/v1';
+const USE_MOCK_DATA = !EASYBROKER_API_KEY || EASYBROKER_API_KEY === 'your_key_here';
+
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -128,44 +135,118 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
-    version: '1.0.0'
+    version: '1.0.0',
+    dataSource: USE_MOCK_DATA ? 'mock' : 'easybroker',
+    apiKeyConfigured: !USE_MOCK_DATA
   };
   
   sendSuccess(res, health);
 });
 
+// Helper function to fetch from EasyBroker API
+async function fetchFromEasyBroker(params: any) {
+  try {
+    const queryParams = new URLSearchParams();
+    
+    // Map our parameters to EasyBroker's expected format
+    if (params.city) {
+      queryParams.append('search[city]', params.city);
+    }
+    if (params.priceMin) {
+      queryParams.append('search[min_price]', params.priceMin);
+    }
+    if (params.priceMax) {
+      queryParams.append('search[max_price]', params.priceMax);
+    }
+    if (params.bedrooms) {
+      queryParams.append('search[bedrooms]', params.bedrooms);
+    }
+    // Only show published properties
+    queryParams.append('search[statuses][]', 'published');
+    queryParams.append('limit', '20');
+
+    const response = await axios.get(
+      `${EASYBROKER_API_URL}/properties?${queryParams.toString()}`,
+      {
+        headers: {
+          'X-Authorization': EASYBROKER_API_KEY,
+          'Accept': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+
+    // Transform EasyBroker response to our format
+    const properties = response.data.content?.map((prop: any) => ({
+      title: prop.title || 'Property',
+      price: prop.operations?.[0]?.amount || 0,
+      location: `${prop.location?.city || ''}, ${prop.location?.state || ''}`.trim(),
+      bedrooms: prop.bedrooms || 0,
+      link: prop.public_url || '#',
+      image: prop.title_image_url || 'https://via.placeholder.com/300x200',
+      source: 'easybroker',
+      id: prop.public_id
+    })) || [];
+
+    return {
+      properties,
+      total: response.data.pagination?.total || properties.length,
+      source: 'easybroker'
+    };
+  } catch (error: any) {
+    console.error('EasyBroker API error:', error.response?.data || error.message);
+    throw new Error('Failed to fetch from EasyBroker');
+  }
+}
+
 app.get('/properties', validatePropertySearch, async (req: Request, res: Response) => {
   try {
     const { city, zipCode, area, priceMin, priceMax, bedrooms } = req.query;
 
-    // Filter mock properties based on query parameters
-    let filtered = [...mockProperties];
+    // Use mock data if no API key is configured
+    if (USE_MOCK_DATA) {
+      // Filter mock properties based on query parameters
+      let filtered = [...mockProperties];
 
-    if (city) {
-      const cityStr = String(city).toLowerCase();
-      filtered = filtered.filter(p => 
-        p.location.toLowerCase().includes(cityStr)
-      );
+      if (city) {
+        const cityStr = String(city).toLowerCase();
+        filtered = filtered.filter(p => 
+          p.location.toLowerCase().includes(cityStr)
+        );
+      }
+
+      if (priceMin) {
+        filtered = filtered.filter(p => p.price >= Number(priceMin));
+      }
+
+      if (priceMax) {
+        filtered = filtered.filter(p => p.price <= Number(priceMax));
+      }
+
+      if (bedrooms) {
+        filtered = filtered.filter(p => p.bedrooms === Number(bedrooms));
+      }
+
+      sendSuccess(res, {
+        properties: filtered,
+        total: filtered.length,
+        source: 'mock',
+        query: req.query
+      });
+    } else {
+      // Fetch from EasyBroker API
+      const result = await fetchFromEasyBroker({
+        city: city as string,
+        priceMin: priceMin as string,
+        priceMax: priceMax as string,
+        bedrooms: bedrooms as string
+      });
+
+      sendSuccess(res, {
+        ...result,
+        query: req.query
+      });
     }
-
-    if (priceMin) {
-      filtered = filtered.filter(p => p.price >= Number(priceMin));
-    }
-
-    if (priceMax) {
-      filtered = filtered.filter(p => p.price <= Number(priceMax));
-    }
-
-    if (bedrooms) {
-      filtered = filtered.filter(p => p.bedrooms === Number(bedrooms));
-    }
-
-    sendSuccess(res, {
-      properties: filtered,
-      total: filtered.length,
-      source: 'mock',
-      query: req.query
-    });
   } catch (error) {
     console.error('Error searching properties:', error);
     sendError(res, 500, 'Failed to search properties', 'SEARCH_ERROR');
