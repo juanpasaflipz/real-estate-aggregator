@@ -143,24 +143,43 @@ export class PropertyScraper {
     const $ = cheerio.load(html);
     const properties: ScrapedProperty[] = [];
 
-    $('.tileV2').each((_, element) => {
+    // Use the new selectors for Vivanuncios
+    $('[data-qa="posting PROPERTY"], [data-qa="posting DEVELOPMENT"]').each((_, element) => {
       try {
         const $el = $(element);
         
-        const title = $el.find('.ad-tile-title, .tile-title').text().trim();
-        const priceText = $el.find('.ad-tile-price, .tile-price').text().trim();
-        const location = $el.find('.tile-location, .ad-tile-location').text().trim();
-        const link = $el.find('a.tile-title-text, a').first().attr('href') || '';
-        const image = $el.find('img').first().attr('src') || 
-                     $el.find('img').first().attr('data-src') || '';
+        // Extract data using new selectors
+        const titleEl = $el.find('[data-qa="POSTING_CARD_DESCRIPTION"] a');
+        const title = titleEl.text().trim() || 
+                     $el.find('.postingCard-module__posting-description a').text().trim();
+        
+        const priceText = $el.find('[data-qa="POSTING_CARD_PRICE"]').text().trim() || 
+                         $el.find('.postingPrices-module__price').text().trim();
+        
+        const location = $el.find('[data-qa="POSTING_CARD_LOCATION"]').text().trim() || 
+                        $el.find('.postingLocations-module__location-text').text().trim();
+        
+        // Get link from data-to-posting attribute
+        let link = $el.attr('data-to-posting') || '';
+        if (link && !link.startsWith('http')) {
+          link = `https://www.vivanuncios.com.mx${link}`;
+        }
+        
+        // Get image
+        const image = $el.find('[data-qa="POSTING_CARD_GALLERY"] img').first().attr('src') || 
+                     $el.find('.postingGallery-module__gallery-container img').first().attr('src') || '';
+        
+        // Extract features for bedroom count
+        const features = $el.find('[data-qa="POSTING_CARD_FEATURES"]').text() || 
+                        $el.find('.postingMainFeatures-module__posting-main-features-span').text();
 
         if (title && priceText) {
           properties.push({
             title,
             price: this.parsePrice(priceText),
             location: location || 'Mexico',
-            bedrooms: this.extractBedrooms(title + ' ' + $el.text()),
-            link: link.startsWith('http') ? link : `https://www.vivanuncios.com.mx${link}`,
+            bedrooms: this.extractBedrooms(title + ' ' + features),
+            link: link,
             image: image || 'https://via.placeholder.com/300x200',
             source: 'vivanuncios'
           });
