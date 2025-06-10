@@ -15,8 +15,8 @@
     "test-api": "tsx src/simple-test.ts",
     "test-rest": "tsx src/test-rest-api.ts",
     "mock-api": "tsx src/mock-api.ts",
-    "db:migrate": "knex migrate:latest",
-    "db:migrate:prod": "knex migrate:latest --env production",
+    "db:migrate": "node migrate.js",
+    "db:migrate:prod": "NODE_ENV=production node migrate.js",
     "db:rollback": "knex migrate:rollback",
     "db:status": "knex migrate:status"
   },
