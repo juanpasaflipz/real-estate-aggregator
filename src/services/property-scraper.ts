@@ -26,8 +26,8 @@ export class PropertyScraper {
       const html = await this.scrapeDoService.scrape({
         url,
         render: false, // Disabled - not included in current plan
-        super: false,  // Disabled - check if this is included
-        geoCode: 'mx'
+        super: false   // Disabled - not included in current plan
+        // geoCode removed - not included in current plan
       });
 
       return this.parseVivanunciosHTML(html);
