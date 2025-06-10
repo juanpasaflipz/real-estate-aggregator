@@ -25,8 +25,8 @@ export class PropertyScraper {
     try {
       const html = await this.scrapeDoService.scrape({
         url,
-        render: true, // Use headless browser for better results
-        super: true,  // Use residential proxies
+        render: false, // Disabled - not included in current plan
+        super: false,  // Disabled - check if this is included
         geoCode: 'mx'
       });
 
