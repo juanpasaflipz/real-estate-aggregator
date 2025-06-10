@@ -16,7 +16,9 @@ async function testVivanunciosWithoutRender() {
       params: {
         token: SCRAPEDO_TOKEN,
         url: vivanunciosUrl,
-        render: false  // No JS rendering, no geo-targeting
+        render: true,   // Test with JS rendering
+        super: false,   // No residential proxies
+        geoCode: 'mx'   // Test with Mexico geo-location
       },
       timeout: 60000
     });

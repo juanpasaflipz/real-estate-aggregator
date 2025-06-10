@@ -25,9 +25,9 @@ export class PropertyScraper {
     try {
       const html = await this.scrapeDoService.scrape({
         url,
-        render: false, // Disabled - not included in current plan
-        super: false   // Disabled - not included in current plan
-        // geoCode removed - not included in current plan
+        render: true,  // Use headless browser for JavaScript content
+        super: false,  // Not included in current plan
+        geoCode: 'mx'  // Use Mexico geo-location
       });
 
       return this.parseVivanunciosHTML(html);
