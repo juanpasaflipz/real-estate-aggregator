@@ -11,38 +11,38 @@ export class MercadoLibreScraper {
     const $ = cheerio.load(html);
     const properties: Property[] = [];
 
-    // MercadoLibre uses .ui-search-result__wrapper for each listing
-    $('.ui-search-result__wrapper').each((_, element) => {
+    // MercadoLibre structure: parse complete list items
+    $('li.ui-search-layout__item').each((_, element) => {
       try {
         const $el = $(element);
         
-        // Extract basic information
-        const titleElement = $el.find('h2.ui-search-item__title');
+        // Extract basic information - title is in poly-component__title
+        const titleElement = $el.find('.poly-component__title');
         const title = titleElement.text().trim();
         
-        // Get the link
-        const linkElement = $el.find('a.ui-search-link, a.ui-search-result__content');
-        const href = linkElement.attr('href') || '';
+        // Get the link - from the title element
+        const href = titleElement.attr('href') || $el.find('a[href*="MLM-"]').first().attr('href') || '';
         
         // Extract ID from URL
         const idMatch = href.match(/MLM-(\d+)/);
         const externalId = idMatch ? idMatch[1] : `ml-${this.propertyIdCounter++}`;
         
-        // Extract price
-        const priceText = $el.find('.price-tag-text-sr-only').text().trim() || 
-                         $el.find('.price-tag-amount').text().trim() ||
-                         $el.find('.ui-search-price__second-line').text().trim();
+        // Extract price - look for various price selectors
+        const priceText = $el.find('.andes-money-amount__fraction').first().text().trim() || 
+                         $el.find('[class*="price"]').first().text().trim() ||
+                         $el.find('.price-tag-text-sr-only').text().trim() || 
+                         $el.find('.price-tag-amount').text().trim();
         
         const priceMatch = priceText.match(/[\d,]+/);
         const price = priceMatch ? parseFloat(priceMatch[0].replace(/,/g, '')) : 0;
         
         // Extract location
-        const location = $el.find('.ui-search-item__location').text().trim() || 
-                        $el.find('.ui-search-item__group--location').text().trim() ||
+        const location = $el.find('[class*="location"]').text().trim() || 
+                        $el.find('.poly-component__location').text().trim() ||
                         'México';
         
-        // Extract attributes (size, bedrooms, bathrooms)
-        const attributes = $el.find('.ui-search-card-attributes__attribute').map((_, attr) => 
+        // Extract attributes (size, bedrooms, bathrooms) - look for poly-attributes_list__item
+        const attributes = $el.find('.poly-attributes_list__item').map((_, attr) => 
           $(attr).text().trim()
         ).get();
         
@@ -57,8 +57,9 @@ export class MercadoLibreScraper {
             size = parseInt(sizeMatch[1]);
           }
           
-          // Bedrooms
-          if (attr.toLowerCase().includes('recámara') || attr.toLowerCase().includes('habitación')) {
+          // Bedrooms - also check for 'dormitorio'
+          if (attr.toLowerCase().includes('recámara') || attr.toLowerCase().includes('habitación') || attr.toLowerCase().includes('dormitorio')) {
+            // Handle ranges like "2 a 3 dormitorios" - take the minimum
             const numMatch = attr.match(/(\d+)/);
             if (numMatch) {
               bedrooms = parseInt(numMatch[1]);
@@ -67,6 +68,7 @@ export class MercadoLibreScraper {
           
           // Bathrooms
           if (attr.toLowerCase().includes('baño')) {
+            // Handle ranges like "2 a 4 baños" - take the minimum
             const numMatch = attr.match(/(\d+)/);
             if (numMatch) {
               bathrooms = parseInt(numMatch[1]);
@@ -74,26 +76,29 @@ export class MercadoLibreScraper {
           }
         });
         
-        // Extract images
+        // Extract images - look for various image selectors
         const images: string[] = [];
-        const imgElement = $el.find('img.ui-search-result-image__element');
+        const imgElement = $el.find('img').first();
         const imgSrc = imgElement.attr('data-src') || imgElement.attr('src');
         if (imgSrc) {
           images.push(imgSrc);
         }
         
-        // Determine property type from title
+        // Determine property type from title or headline
         let propertyType = 'Inmueble';
+        const headline = $el.find('.poly-component__headline').text().trim();
         const titleLower = title.toLowerCase();
-        if (titleLower.includes('casa')) {
+        const headlineLower = headline.toLowerCase();
+        
+        if (titleLower.includes('casa') || headlineLower.includes('casa')) {
           propertyType = 'Casa';
-        } else if (titleLower.includes('departamento') || titleLower.includes('depto')) {
+        } else if (titleLower.includes('departamento') || titleLower.includes('depto') || headlineLower.includes('departamento')) {
           propertyType = 'Departamento';
-        } else if (titleLower.includes('terreno')) {
+        } else if (titleLower.includes('terreno') || headlineLower.includes('terreno')) {
           propertyType = 'Terreno';
-        } else if (titleLower.includes('oficina')) {
+        } else if (titleLower.includes('oficina') || headlineLower.includes('oficina')) {
           propertyType = 'Oficina';
-        } else if (titleLower.includes('local')) {
+        } else if (titleLower.includes('local') || headlineLower.includes('local')) {
           propertyType = 'Local';
         }
         
