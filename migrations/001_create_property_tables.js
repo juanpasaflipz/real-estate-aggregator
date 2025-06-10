@@ -1,4 +1,4 @@
-exports.up = function(knex) {
+export function up(knex) {
   return knex.schema
     // Create properties table
     .createTable('properties', (table) => {
@@ -61,7 +61,7 @@ exports.up = function(knex) {
     });
 };
 
-exports.down = function(knex) {
+export function down(knex) {
   return knex.schema
     .dropTableIfExists('search_history')
     .dropTableIfExists('property_features')
