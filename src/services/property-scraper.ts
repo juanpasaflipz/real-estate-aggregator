@@ -55,7 +55,7 @@ export class PropertyScraper {
     }
   }
 
-  private buildVivanunciosUrl(params: any): string {
+  public buildVivanunciosUrl(params: any): string {
     const cityMap: Record<string, string> = {
       'mexico': 'ciudad-de-mexico/v1c1097l11518p1',
       'mexico city': 'ciudad-de-mexico/v1c1097l11518p1',

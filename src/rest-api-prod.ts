@@ -486,6 +486,35 @@ app.get('/database/explore/:table?', async (req: Request, res: Response) => {
   }
 });
 
+// Test Vivanuncios scraping endpoint
+app.get('/test/vivanuncios', async (req: Request, res: Response) => {
+  if (!propertyScraper) {
+    return sendError(res, 503, 'Property scraper not configured', 'SERVICE_UNAVAILABLE');
+  }
+
+  try {
+    console.log('Testing Vivanuncios scraping...');
+    const properties = await propertyScraper.scrapeVivanuncios({
+      city: req.query.city as string || 'mexico city',
+      priceMin: req.query.priceMin as string,
+      priceMax: req.query.priceMax as string,
+      bedrooms: req.query.bedrooms as string
+    });
+
+    sendSuccess(res, {
+      source: 'vivanuncios',
+      count: properties.length,
+      properties: properties.slice(0, 5), // Return first 5 for testing
+      testUrl: propertyScraper.buildVivanunciosUrl({
+        city: req.query.city as string || 'mexico city'
+      })
+    });
+  } catch (error: any) {
+    console.error('Vivanuncios test error:', error);
+    sendError(res, 500, `Vivanuncios scraping failed: ${error.message}`, 'SCRAPE_ERROR');
+  }
+});
+
 // Check Scrape.do credits endpoint
 app.get('/scrape/credits', async (req: Request, res: Response) => {
   if (!scrapeDoService) {
