@@ -442,6 +442,50 @@ app.get('/database/stats', async (req: Request, res: Response) => {
   }
 });
 
+// Database explorer endpoint (for development only)
+app.get('/database/explore/:table?', async (req: Request, res: Response) => {
+  if (!dbService) {
+    return sendError(res, 503, 'Database service not configured', 'SERVICE_UNAVAILABLE');
+  }
+
+  // Only allow in development mode for security
+  if (process.env.NODE_ENV === 'production' && !req.query.debug) {
+    return sendError(res, 403, 'Database explorer not available in production', 'FORBIDDEN');
+  }
+
+  try {
+    const table = req.params.table || 'properties';
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    // @ts-ignore - Using raw knex methods
+    const query = dbService.db(table).limit(limit).offset(offset);
+    
+    if (req.query.where) {
+      const whereClause = JSON.parse(req.query.where as string);
+      query.where(whereClause);
+    }
+
+    if (req.query.orderBy) {
+      query.orderBy(req.query.orderBy as string, req.query.order as string || 'desc');
+    }
+
+    const data = await query;
+    const [{ count }] = await dbService.db(table).count();
+
+    sendSuccess(res, {
+      table,
+      total: parseInt(count as string),
+      limit,
+      offset,
+      data
+    });
+  } catch (error: any) {
+    console.error('Database explorer error:', error);
+    sendError(res, 500, `Failed to explore database: ${error.message}`, 'EXPLORER_ERROR');
+  }
+});
+
 // Check Scrape.do credits endpoint
 app.get('/scrape/credits', async (req: Request, res: Response) => {
   if (!scrapeDoService) {

@@ -23,7 +23,7 @@ interface PropertyRecord {
 }
 
 export class DatabaseService {
-  private db: Knex;
+  public db: Knex;
 
   constructor(databaseUrl: string) {
     this.db = knex({
