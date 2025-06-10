@@ -88,6 +88,7 @@ export class PropertyScraper {
       const url = mercadoLibreScraper.buildSearchUrl(params);
       
       console.log('Scraping MercadoLibre:', url);
+      console.log('Parameters:', params);
       
       // MercadoLibre works without JS rendering
       const html = await this.scrapeDoService.scrape({
@@ -96,9 +97,16 @@ export class PropertyScraper {
         geoCode: 'mx'
       });
       
-      return mercadoLibreScraper.parseHTML(html);
+      console.log('MercadoLibre HTML received, length:', html.length);
+      console.log('HTML contains search results:', html.includes('ui-search-result'));
+      
+      const properties = mercadoLibreScraper.parseHTML(html);
+      console.log('MercadoLibre parsed properties:', properties.length);
+      
+      return properties;
     } catch (error: any) {
       console.error('MercadoLibre scraping error:', error.message);
+      console.error('Full error:', error);
       return [];
     }
   }

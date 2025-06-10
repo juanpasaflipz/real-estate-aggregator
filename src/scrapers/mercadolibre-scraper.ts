@@ -166,7 +166,20 @@ export class MercadoLibreScraper {
     const propertyType = propertyTypeMap[params.propertyType?.toLowerCase() || ''] || '';
     const city = cityMap[params.city?.toLowerCase() || ''] || 'distrito-federal';
     
-    let url = `${baseUrl}/${propertyType}/venta/${city}/`;
+    // If no property type specified, use 'inmuebles' for all properties
+    let url;
+    if (propertyType) {
+      url = `${baseUrl}/${propertyType}/venta/${city}/`;
+    } else {
+      url = `${baseUrl}/venta/${city}/`;
+    }
+    
+    console.log('MercadoLibre URL building:', {
+      params,
+      propertyType,
+      city,
+      url
+    });
     
     // Add price range if specified
     const queryParams = [];
@@ -183,6 +196,8 @@ export class MercadoLibreScraper {
     if (queryParams.length > 0) {
       url += `_PriceRange_${queryParams.join('-')}`;
     }
+    
+    console.log('Final MercadoLibre URL:', url);
     
     return url;
   }

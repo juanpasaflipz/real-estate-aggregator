@@ -174,9 +174,11 @@ app.get('/health', async (req: Request, res: Response) => {
     dataSources,
     servicesAvailable: {
       pulppo: HAS_SCRAPEDO,
+      mercadolibre: HAS_SCRAPEDO,
       database: HAS_DATABASE
     },
-    databaseStatus
+    databaseStatus,
+    scrapeDoToken: SCRAPEDO_TOKEN ? `${SCRAPEDO_TOKEN.substring(0, 10)}...` : 'not configured'
   };
   
   sendSuccess(res, health);
@@ -405,6 +407,33 @@ app.get('/test/pulppo', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Pulppo test error:', error);
     sendError(res, 500, `Pulppo scraping failed: ${error.message}`, 'SCRAPE_ERROR');
+  }
+});
+
+// Test MercadoLibre scraping endpoint
+app.get('/test/mercadolibre', async (req: Request, res: Response) => {
+  if (!propertyScraper) {
+    return sendError(res, 503, 'Property scraper not configured', 'SERVICE_UNAVAILABLE');
+  }
+
+  try {
+    console.log('Testing MercadoLibre scraping...');
+    const properties = await propertyScraper.scrapeMercadoLibre({
+      city: req.query.city as string || 'mexico',
+      priceMin: req.query.priceMin as string,
+      priceMax: req.query.priceMax as string,
+      bedrooms: req.query.bedrooms as string
+    });
+
+    sendSuccess(res, {
+      source: 'mercadolibre',
+      count: properties.length,
+      properties: properties.slice(0, 5), // Return first 5 for testing
+      totalAvailable: properties.length > 0 ? '17,000+ properties on MercadoLibre' : 'Check logs for errors'
+    });
+  } catch (error: any) {
+    console.error('MercadoLibre test error:', error);
+    sendError(res, 500, `MercadoLibre scraping failed: ${error.message}`, 'SCRAPE_ERROR');
   }
 });
 
