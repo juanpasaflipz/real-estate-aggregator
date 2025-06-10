@@ -61,7 +61,7 @@ export class ScrapingBeeService {
       });
 
       if (response.status !== 200) {
-        throw new Error(`ScrapingBee returned status ${response.status}: ${response.data}`);
+        throw new Error(`ScrapingBee returned status ${response.status}: ${JSON.stringify(response.data)}`);
       }
 
       // Log credit usage if available

@@ -40,17 +40,7 @@ export class PropertyScraper {
             country_code: 'mx',
             stealth_proxy: false,  // This worked better in tests
             block_ads: true,
-            wait: 5000,
-            wait_for: 'a[href*="/propiedad/"]',
-            js_scenario: {
-              instructions: [
-                { wait: 2000 },
-                { scroll: { y: 1000 } },
-                { wait: 2000 },
-                { scroll: { y: 2000 } },
-                { wait: 1000 }
-              ]
-            }
+            wait: 5000
           });
           
           console.log('ScrapingBee success, response size:', html.length);
