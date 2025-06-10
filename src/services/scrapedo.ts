@@ -8,6 +8,8 @@ interface ScrapeDoOptions {
   sessionNumber?: number;
   customHeaders?: Record<string, string>;
   extraParams?: Record<string, any>;
+  waitFor?: string;
+  waitUntil?: string;
 }
 
 export class ScrapeDoService {
@@ -45,6 +47,14 @@ export class ScrapeDoService {
       
       if (options.sessionNumber !== undefined) {
         params.append('sessionNumber', options.sessionNumber.toString());
+      }
+      
+      if (options.waitFor) {
+        params.append('waitFor', options.waitFor);
+      }
+      
+      if (options.waitUntil) {
+        params.append('waitUntil', options.waitUntil);
       }
 
       // Add any extra parameters

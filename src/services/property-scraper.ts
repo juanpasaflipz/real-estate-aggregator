@@ -29,7 +29,9 @@ export class PropertyScraper {
       const html = await this.scrapeDoService.scrape({
         url,
         render: true,
-        geoCode: 'mx'
+        geoCode: 'mx',
+        waitUntil: 'networkidle2',
+        waitFor: '[class*="property"], [href*="/propiedad/"], .results-grid'
       });
       
       // Check if we got valid content
