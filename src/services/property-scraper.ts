@@ -25,14 +25,50 @@ export class PropertyScraper {
       
       console.log('Scraping Pulppo:', url);
       
-      // Try with Scrape.do (it works without blocking)
-      const html = await this.scrapeDoService.scrape({
-        url,
-        render: true,
-        geoCode: 'mx',
-        waitUntil: 'networkidle2',
-        waitFor: '[class*="property"], [href*="/propiedad/"], .results-grid'
-      });
+      let html = '';
+      
+      // Try ScrapingBee first if available
+      if (process.env.SCRAPINGBEE_API_KEY) {
+        try {
+          const { ScrapingBeeService } = await import('./scrapingbee.js');
+          const scrapingBee = new ScrapingBeeService(process.env.SCRAPINGBEE_API_KEY);
+          
+          html = await scrapingBee.scrape({
+            url,
+            render_js: true,
+            premium_proxy: true,
+            country_code: 'mx',
+            stealth_proxy: false,  // This worked better in tests
+            block_ads: true,
+            wait: 5000,
+            wait_for: 'a[href*="/propiedad/"]',
+            js_scenario: {
+              instructions: [
+                { wait: 2000 },
+                { scroll: { y: 1000 } },
+                { wait: 2000 },
+                { scroll: { y: 2000 } },
+                { wait: 1000 }
+              ]
+            }
+          });
+          
+          console.log('ScrapingBee success, response size:', html.length);
+        } catch (error: any) {
+          console.error('ScrapingBee failed:', error.message);
+        }
+      }
+      
+      // Fallback to Scrape.do if ScrapingBee failed or not available
+      if (!html || html.length < 1000) {
+        html = await this.scrapeDoService.scrape({
+          url,
+          render: true,
+          geoCode: 'mx',
+          waitUntil: 'networkidle2',
+          waitFor: '[class*="property"], [href*="/propiedad/"], .results-grid'
+        });
+      }
       
       // Check if we got valid content
       if (html.includes('__NEXT_DATA__') && !html.includes('propiedad')) {
