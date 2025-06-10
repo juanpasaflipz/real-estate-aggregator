@@ -14,7 +14,11 @@
     "test": "tsx src/test-client.ts",
     "test-api": "tsx src/simple-test.ts",
     "test-rest": "tsx src/test-rest-api.ts",
-    "mock-api": "tsx src/mock-api.ts"
+    "mock-api": "tsx src/mock-api.ts",
+    "db:migrate": "knex migrate:latest",
+    "db:migrate:prod": "knex migrate:latest --env production",
+    "db:rollback": "knex migrate:rollback",
+    "db:status": "knex migrate:status"
   },
   "keywords": [
     "mcp",
@@ -26,10 +30,13 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0",
     "@types/cheerio": "^0.22.35",
+    "@types/pg": "^8.15.4",
     "axios": "^1.6.2",
     "cheerio": "^1.0.0",
     "dotenv": "^16.5.0",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "knex": "^3.1.0",
+    "pg": "^8.16.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

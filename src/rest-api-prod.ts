@@ -3,6 +3,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import { ScrapeDoService } from './services/scrapedo.js';
 import { PropertyScraper } from './services/property-scraper.js';
+import { DatabaseService } from './services/database.js';
 
 dotenv.config();
 
@@ -21,9 +22,24 @@ const EASYBROKER_API_URL = isTestKey ? 'https://api.stagingeb.com/v1' : 'https:/
 const USE_MOCK_DATA = !EASYBROKER_API_KEY || EASYBROKER_API_KEY === 'your_key_here';
 const HAS_SCRAPEDO = SCRAPEDO_TOKEN && SCRAPEDO_TOKEN !== 'your_scrapedo_token_here';
 
+// Database configuration
+const DATABASE_URL = process.env.DATABASE_URL;
+const HAS_DATABASE = DATABASE_URL && DATABASE_URL !== 'your_database_url_here';
+
 // Initialize services
 const scrapeDoService = HAS_SCRAPEDO ? new ScrapeDoService(SCRAPEDO_TOKEN) : null;
 const propertyScraper = HAS_SCRAPEDO ? new PropertyScraper(SCRAPEDO_TOKEN) : null;
+let dbService: DatabaseService | null = null;
+
+// Initialize database if configured
+if (HAS_DATABASE) {
+  dbService = new DatabaseService(DATABASE_URL);
+  dbService.initialize().then(() => {
+    console.log('Database initialized successfully');
+  }).catch((error) => {
+    console.error('Database initialization error:', error);
+  });
+}
 
 app.use(express.json());
 
@@ -141,11 +157,22 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', async (req: Request, res: Response) => {
   const dataSources = [];
   if (USE_MOCK_DATA) dataSources.push('mock');
   if (!USE_MOCK_DATA) dataSources.push('easybroker');
   if (HAS_SCRAPEDO) dataSources.push('vivanuncios');
+  if (HAS_DATABASE) dataSources.push('database');
+  
+  let databaseStatus = 'not_configured';
+  if (dbService) {
+    try {
+      const stats = await dbService.getPropertyStats();
+      databaseStatus = 'healthy';
+    } catch (error) {
+      databaseStatus = 'error';
+    }
+  }
   
   const health = {
     status: 'healthy',
@@ -155,8 +182,10 @@ app.get('/health', (req: Request, res: Response) => {
     dataSources,
     servicesAvailable: {
       easybroker: !USE_MOCK_DATA,
-      scrapedo: HAS_SCRAPEDO
-    }
+      scrapedo: HAS_SCRAPEDO,
+      database: HAS_DATABASE
+    },
+    databaseStatus
   };
   
   sendSuccess(res, health);
@@ -220,10 +249,38 @@ async function fetchFromEasyBroker(params: any) {
 
 app.get('/properties', validatePropertySearch, async (req: Request, res: Response) => {
   try {
-    const { city, zipCode, area, priceMin, priceMax, bedrooms } = req.query;
+    const { city, zipCode, area, priceMin, priceMax, bedrooms, useCache } = req.query;
     const allProperties = [];
     const sources = [];
     const errors = [];
+    
+    // Check database cache first (unless explicitly disabled)
+    if (dbService && useCache !== 'false') {
+      try {
+        const cachedProperties = await dbService.searchProperties({
+          city: city as string,
+          priceMin: priceMin as string,
+          priceMax: priceMax as string,
+          bedrooms: bedrooms as string
+        });
+        
+        if (cachedProperties.length > 0) {
+          // Log the search
+          await dbService.logSearch(req.query, cachedProperties.length, ['database_cache']);
+          
+          return sendSuccess(res, {
+            properties: cachedProperties,
+            total: cachedProperties.length,
+            sources: ['database_cache'],
+            fromCache: true,
+            query: req.query
+          });
+        }
+      } catch (error: any) {
+        console.error('Database cache error:', error.message);
+        errors.push({ source: 'database_cache', error: error.message });
+      }
+    }
 
     // Use mock data if no API key is configured
     if (USE_MOCK_DATA) {
@@ -288,6 +345,22 @@ app.get('/properties', validatePropertySearch, async (req: Request, res: Respons
 
     // Remove duplicates based on title similarity
     const uniqueProperties = removeDuplicates(allProperties);
+    
+    // Save properties to database if available
+    if (dbService && uniqueProperties.length > 0) {
+      try {
+        await dbService.saveProperties(uniqueProperties);
+        console.log(`Saved ${uniqueProperties.length} properties to database`);
+      } catch (error: any) {
+        console.error('Error saving to database:', error.message);
+        errors.push({ source: 'database_save', error: error.message });
+      }
+    }
+    
+    // Log search history
+    if (dbService) {
+      await dbService.logSearch(req.query, uniqueProperties.length, sources);
+    }
 
     sendSuccess(res, {
       properties: uniqueProperties,
@@ -349,6 +422,26 @@ app.post('/scrape', async (req: Request, res: Response) => {
   }
 });
 
+// Database statistics endpoint
+app.get('/database/stats', async (req: Request, res: Response) => {
+  if (!dbService) {
+    return sendError(res, 503, 'Database service not configured', 'SERVICE_UNAVAILABLE');
+  }
+
+  try {
+    const stats = await dbService.getPropertyStats();
+    const recentSearches = await dbService.getRecentSearches();
+    
+    sendSuccess(res, {
+      propertyStats: stats,
+      recentSearches
+    });
+  } catch (error: any) {
+    console.error('Database stats error:', error);
+    sendError(res, 500, `Failed to get database stats: ${error.message}`, 'STATS_ERROR');
+  }
+});
+
 // Check Scrape.do credits endpoint
 app.get('/scrape/credits', async (req: Request, res: Response) => {
   if (!scrapeDoService) {
@@ -377,8 +470,48 @@ app.listen(PORT, () => {
   console.log(`REST API server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`Properties endpoint: http://localhost:${PORT}/properties`);
+  if (HAS_DATABASE) {
+    console.log(`Database stats: GET http://localhost:${PORT}/database/stats`);
+  }
   if (HAS_SCRAPEDO) {
     console.log(`Scrape endpoint: POST http://localhost:${PORT}/scrape`);
     console.log(`Credits check: GET http://localhost:${PORT}/scrape/credits`);
   }
 });
+
+// Background job for refreshing property data
+if (dbService && propertyScraper) {
+  // Refresh data every 6 hours
+  const REFRESH_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+  
+  const refreshProperties = async () => {
+    console.log('Starting scheduled property refresh...');
+    const cities = ['mexico city', 'guadalajara', 'monterrey', 'cancun'];
+    let totalUpdated = 0;
+    
+    for (const city of cities) {
+      try {
+        console.log(`Refreshing properties for ${city}...`);
+        const properties = await propertyScraper.scrapeAllSources({ city });
+        
+        if (properties.length > 0) {
+          await dbService.saveProperties(properties);
+          console.log(`Updated ${properties.length} properties for ${city}`);
+          totalUpdated += properties.length;
+        }
+      } catch (error) {
+        console.error(`Error refreshing ${city}:`, error);
+      }
+    }
+    
+    console.log(`Property refresh completed. Total properties updated: ${totalUpdated}`);
+  };
+  
+  // Run initial refresh after 1 minute
+  setTimeout(refreshProperties, 60000);
+  
+  // Then run every 6 hours
+  setInterval(refreshProperties, REFRESH_INTERVAL);
+  
+  console.log('Background property refresh job scheduled (every 6 hours)');
+}
