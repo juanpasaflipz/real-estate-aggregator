@@ -93,7 +93,7 @@ function sendSuccess<T>(res: Response, data: T, meta?: any): void {
 }
 
 const validatePropertySearch = (req: Request, res: Response, next: NextFunction) => {
-  const { city, zipCode, priceMin, priceMax, bedrooms } = req.query;
+  const { city, zipCode, priceMin, priceMax, bedrooms, bathrooms, sizeMin, sizeMax, sortBy, sortOrder, page, limit } = req.query;
 
   if (priceMin && isNaN(Number(priceMin))) {
     return sendError(res, 400, 'Invalid priceMin parameter', 'INVALID_PRICE_MIN');
@@ -107,8 +107,40 @@ const validatePropertySearch = (req: Request, res: Response, next: NextFunction)
     return sendError(res, 400, 'Invalid bedrooms parameter', 'INVALID_BEDROOMS');
   }
 
+  if (bathrooms && isNaN(Number(bathrooms))) {
+    return sendError(res, 400, 'Invalid bathrooms parameter', 'INVALID_BATHROOMS');
+  }
+
+  if (sizeMin && isNaN(Number(sizeMin))) {
+    return sendError(res, 400, 'Invalid sizeMin parameter', 'INVALID_SIZE_MIN');
+  }
+
+  if (sizeMax && isNaN(Number(sizeMax))) {
+    return sendError(res, 400, 'Invalid sizeMax parameter', 'INVALID_SIZE_MAX');
+  }
+
+  if (page && isNaN(Number(page))) {
+    return sendError(res, 400, 'Invalid page parameter', 'INVALID_PAGE');
+  }
+
+  if (limit && isNaN(Number(limit))) {
+    return sendError(res, 400, 'Invalid limit parameter', 'INVALID_LIMIT');
+  }
+
   if (priceMin && priceMax && Number(priceMin) > Number(priceMax)) {
     return sendError(res, 400, 'priceMin cannot be greater than priceMax', 'INVALID_PRICE_RANGE');
+  }
+
+  if (sizeMin && sizeMax && Number(sizeMin) > Number(sizeMax)) {
+    return sendError(res, 400, 'sizeMin cannot be greater than sizeMax', 'INVALID_SIZE_RANGE');
+  }
+
+  if (sortBy && !['price', 'date', 'size'].includes(sortBy.toString())) {
+    return sendError(res, 400, 'Invalid sortBy parameter. Must be one of: price, date, size', 'INVALID_SORT_BY');
+  }
+
+  if (sortOrder && !['asc', 'desc'].includes(sortOrder.toString())) {
+    return sendError(res, 400, 'Invalid sortOrder parameter. Must be one of: asc, desc', 'INVALID_SORT_ORDER');
   }
 
   next();
@@ -144,7 +176,9 @@ app.get('/properties', validatePropertySearch, async (req: Request, res: Respons
   }
 
   try {
-    const { city, zipCode, area, priceMin, priceMax, bedrooms, features } = req.query;
+    const { city, zipCode, area, priceMin, priceMax, bedrooms, bathrooms, 
+            sizeMin, sizeMax, propertyType, features, sortBy, sortOrder, 
+            page, limit } = req.query;
 
     const params: any = {};
     if (city) params.city = String(city);
@@ -153,9 +187,17 @@ app.get('/properties', validatePropertySearch, async (req: Request, res: Respons
     if (priceMin) params.priceMin = Number(priceMin);
     if (priceMax) params.priceMax = Number(priceMax);
     if (bedrooms) params.bedrooms = Number(bedrooms);
+    if (bathrooms) params.bathrooms = Number(bathrooms);
+    if (sizeMin) params.sizeMin = Number(sizeMin);
+    if (sizeMax) params.sizeMax = Number(sizeMax);
+    if (propertyType) params.propertyType = String(propertyType);
     if (features) {
       params.features = String(features).split(',').map(f => f.trim());
     }
+    if (sortBy) params.sortBy = String(sortBy);
+    if (sortOrder) params.sortOrder = String(sortOrder);
+    if (page) params.page = Number(page);
+    if (limit) params.limit = Number(limit);
 
     console.log('Calling MCP tool with params:', params);
     const result = await mcpClient.callTool({

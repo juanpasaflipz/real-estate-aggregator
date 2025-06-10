@@ -56,12 +56,46 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "number",
               description: "Number of bedrooms",
             },
+            bathrooms: {
+              type: "number",
+              description: "Number of bathrooms",
+            },
+            sizeMin: {
+              type: "number",
+              description: "Minimum property size in square meters",
+            },
+            sizeMax: {
+              type: "number",
+              description: "Maximum property size in square meters",
+            },
+            propertyType: {
+              type: "string",
+              description: "Type of property (house, apartment, condo, villa, etc.)",
+            },
             features: {
               type: "array",
               items: {
                 type: "string",
               },
               description: "List of desired features (pool, garage, garden, etc.)",
+            },
+            sortBy: {
+              type: "string",
+              enum: ["price", "date", "size"],
+              description: "Sort results by price, date, or size",
+            },
+            sortOrder: {
+              type: "string",
+              enum: ["asc", "desc"],
+              description: "Sort order (ascending or descending)",
+            },
+            page: {
+              type: "number",
+              description: "Page number for pagination (default: 1)",
+            },
+            limit: {
+              type: "number",
+              description: "Number of results per page (default: 20)",
             },
           },
         },

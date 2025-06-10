@@ -1,18 +1,11 @@
 import * as cheerio from 'cheerio';
 import { ScrapeDoService } from './scrapedo.js';
-
-interface ScrapedProperty {
-  title: string;
-  price: number;
-  location: string;
-  bedrooms: number;
-  link: string;
-  image: string;
-  source: string;
-}
+import { Property } from '../types.js';
+import { parseVivanunciosHTML, extractVivanunciosData } from '../scrapers/vivanuncios-v2.js';
 
 export class PropertyScraper {
   private scrapeDoService: ScrapeDoService;
+  private propertyIdCounter: number = 1;
 
   constructor(scrapeDoToken: string) {
     this.scrapeDoService = new ScrapeDoService(scrapeDoToken);
@@ -26,7 +19,7 @@ export class PropertyScraper {
     priceMin?: string;
     priceMax?: string;
     bedrooms?: string;
-  }): Promise<ScrapedProperty[]> {
+  }): Promise<Property[]> {
     const url = this.buildVivanunciosUrl(params);
     
     try {
@@ -52,7 +45,7 @@ export class PropertyScraper {
     priceMin?: string;
     priceMax?: string;
     bedrooms?: string;
-  }): Promise<ScrapedProperty[]> {
+  }): Promise<Property[]> {
     const url = this.buildInmuebles24Url(params);
     
     try {
@@ -78,14 +71,14 @@ export class PropertyScraper {
     priceMin?: string;
     priceMax?: string;
     bedrooms?: string;
-  }): Promise<ScrapedProperty[]> {
+  }): Promise<Property[]> {
     const promises = [
       this.scrapeVivanuncios(params),
       this.scrapeInmuebles24(params)
     ];
 
     const results = await Promise.allSettled(promises);
-    const allProperties: ScrapedProperty[] = [];
+    const allProperties: Property[] = [];
 
     results.forEach((result, index) => {
       if (result.status === 'fulfilled') {
@@ -139,62 +132,59 @@ export class PropertyScraper {
     return url;
   }
 
-  private parseVivanunciosHTML(html: string): ScrapedProperty[] {
-    const $ = cheerio.load(html);
-    const properties: ScrapedProperty[] = [];
+  private parseVivanunciosHTML(html: string): Property[] {
+    const listings = parseVivanunciosHTML(html);
+    const properties: Property[] = [];
 
-    // Use the new selectors for Vivanuncios
-    $('[data-qa="posting PROPERTY"], [data-qa="posting DEVELOPMENT"]').each((_, element) => {
-      try {
-        const $el = $(element);
-        
-        // Extract data using new selectors
-        const titleEl = $el.find('[data-qa="POSTING_CARD_DESCRIPTION"] a');
-        const title = titleEl.text().trim() || 
-                     $el.find('.postingCard-module__posting-description a').text().trim();
-        
-        const priceText = $el.find('[data-qa="POSTING_CARD_PRICE"]').text().trim() || 
-                         $el.find('.postingPrices-module__price').text().trim();
-        
-        const location = $el.find('[data-qa="POSTING_CARD_LOCATION"]').text().trim() || 
-                        $el.find('.postingLocations-module__location-text').text().trim();
-        
-        // Get link from data-to-posting attribute
-        let link = $el.attr('data-to-posting') || '';
-        if (link && !link.startsWith('http')) {
-          link = `https://www.vivanuncios.com.mx${link}`;
+    for (const listing of listings.slice(0, 20)) {
+      const extractedData = extractVivanunciosData(listing);
+      
+      // Extract bathrooms from features
+      let bathrooms: number | undefined;
+      for (const feature of listing.features) {
+        const bathroomMatch = feature.match(/(\d+)\s*(ba[ñn]o|bathroom)/i);
+        if (bathroomMatch) {
+          bathrooms = parseInt(bathroomMatch[1]);
+          break;
         }
-        
-        // Get image
-        const image = $el.find('[data-qa="POSTING_CARD_GALLERY"] img').first().attr('src') || 
-                     $el.find('.postingGallery-module__gallery-container img').first().attr('src') || '';
-        
-        // Extract features for bedroom count
-        const features = $el.find('[data-qa="POSTING_CARD_FEATURES"]').text() || 
-                        $el.find('.postingMainFeatures-module__posting-main-features-span').text();
-
-        if (title && priceText) {
-          properties.push({
-            title,
-            price: this.parsePrice(priceText),
-            location: location || 'Mexico',
-            bedrooms: this.extractBedrooms(title + ' ' + features),
-            link: link,
-            image: image || 'https://via.placeholder.com/300x200',
-            source: 'vivanuncios'
-          });
-        }
-      } catch (err) {
-        console.error('Parse error:', err);
       }
-    });
+      
+      // Extract size from features
+      let size: number | undefined;
+      for (const feature of listing.features) {
+        const sizeMatch = feature.match(/(\d+)\s*m[²2]/i);
+        if (sizeMatch) {
+          size = parseInt(sizeMatch[1]);
+          break;
+        }
+      }
+      
+      properties.push({
+        id: `VN-${this.propertyIdCounter++}`,
+        title: listing.title,
+        price: extractedData.priceNumber,
+        currency: extractedData.currency,
+        location: listing.location,
+        bedrooms: extractedData.bedrooms,
+        bathrooms,
+        size,
+        propertyType: listing.type === 'development' ? 'Desarrollo' : 'Casa',
+        link: listing.link,
+        image: listing.images[0] || 'https://via.placeholder.com/300x200',
+        images: listing.images.length > 0 ? listing.images : ['https://via.placeholder.com/300x200'],
+        features: listing.features,
+        description: listing.description,
+        source: 'vivanuncios',
+        createdAt: new Date().toISOString()
+      });
+    }
 
-    return properties.slice(0, 20); // Limit to 20 properties
+    return properties;
   }
 
-  private parseInmuebles24HTML(html: string): ScrapedProperty[] {
+  private parseInmuebles24HTML(html: string): Property[] {
     const $ = cheerio.load(html);
-    const properties: ScrapedProperty[] = [];
+    const properties: Property[] = [];
 
     $('.posting-card').each((_, element) => {
       try {
@@ -204,19 +194,30 @@ export class PropertyScraper {
         const priceText = $el.find('.price').text().trim();
         const location = $el.find('.posting-location').text().trim();
         const link = $el.find('a').first().attr('href') || '';
-        const image = $el.find('img').first().attr('src') || 
-                     $el.find('img').first().attr('data-src') || '';
         const features = $el.find('.posting-features').text();
+        
+        // Try to get multiple images
+        const images: string[] = [];
+        $el.find('img').each((i, img) => {
+          const src = $(img).attr('src') || $(img).attr('data-src');
+          if (src && !src.includes('placeholder')) {
+            images.push(src);
+          }
+        });
 
         if (title && priceText) {
           properties.push({
+            id: `IN24-${this.propertyIdCounter++}`,
             title,
             price: this.parsePrice(priceText),
+            currency: priceText.includes('USD') || priceText.includes('US$') ? 'USD' : 'MXN',
             location: location || 'Mexico',
             bedrooms: this.extractBedrooms(features),
             link: link.startsWith('http') ? link : `https://www.inmuebles24.com${link}`,
-            image: image || 'https://via.placeholder.com/300x200',
-            source: 'inmuebles24'
+            image: images[0] || 'https://via.placeholder.com/300x200',
+            images: images.length > 0 ? images : ['https://via.placeholder.com/300x200'],
+            source: 'inmuebles24',
+            createdAt: new Date().toISOString()
           });
         }
       } catch (err) {
