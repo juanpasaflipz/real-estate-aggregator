@@ -74,7 +74,37 @@ export class PropertyScraper {
   }
 
   /**
-   * Scrape from all sources (currently only Pulppo)
+   * Scrape properties from MercadoLibre
+   */
+  async scrapeMercadoLibre(params: {
+    city?: string;
+    priceMin?: string;
+    priceMax?: string;
+    bedrooms?: string;
+  }): Promise<Property[]> {
+    try {
+      const { MercadoLibreScraper } = await import('../scrapers/mercadolibre-scraper.js');
+      const mercadoLibreScraper = new MercadoLibreScraper();
+      const url = mercadoLibreScraper.buildSearchUrl(params);
+      
+      console.log('Scraping MercadoLibre:', url);
+      
+      // MercadoLibre works without JS rendering
+      const html = await this.scrapeDoService.scrape({
+        url,
+        render: false,
+        geoCode: 'mx'
+      });
+      
+      return mercadoLibreScraper.parseHTML(html);
+    } catch (error: any) {
+      console.error('MercadoLibre scraping error:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Scrape from all sources
    */
   async scrapeAllSources(params: {
     city?: string;
@@ -82,14 +112,26 @@ export class PropertyScraper {
     priceMax?: string;
     bedrooms?: string;
   }): Promise<Property[]> {
-    // Only scrape from Pulppo now
+    const allProperties: Property[] = [];
+    
+    // Try MercadoLibre first (more reliable)
+    try {
+      const mlProperties = await this.scrapeMercadoLibre(params);
+      console.log(`MercadoLibre returned ${mlProperties.length} properties`);
+      allProperties.push(...mlProperties);
+    } catch (error: any) {
+      console.error('MercadoLibre failed:', error.message);
+    }
+    
+    // Also try Pulppo
     try {
       const pulppoProperties = await this.scrapePulppo(params);
       console.log(`Pulppo returned ${pulppoProperties.length} properties`);
-      return pulppoProperties;
+      allProperties.push(...pulppoProperties);
     } catch (error: any) {
-      console.error('Pulppo scraping failed:', error.message);
-      return [];
+      console.error('Pulppo failed:', error.message);
     }
+    
+    return allProperties;
   }
 }

@@ -153,7 +153,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.get('/health', async (req: Request, res: Response) => {
   const dataSources = [];
-  if (HAS_SCRAPEDO) dataSources.push('pulppo');
+  if (HAS_SCRAPEDO) dataSources.push('mercadolibre', 'pulppo');
   if (HAS_DATABASE) dataSources.push('database');
   
   let databaseStatus = 'not_configured';
@@ -231,7 +231,7 @@ app.get('/properties', validatePropertySearch, async (req: Request, res: Respons
         });
         
         allProperties.push(...scrapedProperties);
-        sources.push('pulppo');
+        sources.push('mercadolibre', 'pulppo');
       } catch (error: any) {
         console.error('Scraping error:', error.message);
         errors.push({ source: 'scraping', error: error.message });
