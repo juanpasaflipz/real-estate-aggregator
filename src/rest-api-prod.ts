@@ -11,15 +11,9 @@ const app = express();
 const PORT = process.env.REST_API_PORT || process.env.PORT || 3002;
 
 // API configurations
-const EASYBROKER_API_KEY = process.env.EASYBROKER_API_KEY || '';
 const SCRAPEDO_TOKEN = process.env.SCRAPEDO_TOKEN || '';
 
-// Use staging URL for test key, production URL for real keys
-const isTestKey = EASYBROKER_API_KEY === 'l7u502p8v46ba3ppgvj5y2aad50lb9';
-const EASYBROKER_API_URL = isTestKey ? 'https://api.stagingeb.com/v1' : 'https://api.easybroker.com/v1';
-
 // Determine data sources
-const USE_MOCK_DATA = !EASYBROKER_API_KEY || EASYBROKER_API_KEY === 'your_key_here';
 const HAS_SCRAPEDO = SCRAPEDO_TOKEN && SCRAPEDO_TOKEN !== 'your_scrapedo_token_here';
 
 // Database configuration
@@ -159,9 +153,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.get('/health', async (req: Request, res: Response) => {
   const dataSources = [];
-  if (USE_MOCK_DATA) dataSources.push('mock');
-  if (!USE_MOCK_DATA) dataSources.push('easybroker');
-  if (HAS_SCRAPEDO) dataSources.push('vivanuncios');
+  if (HAS_SCRAPEDO) dataSources.push('pulppo');
   if (HAS_DATABASE) dataSources.push('database');
   
   let databaseStatus = 'not_configured';
@@ -181,8 +173,7 @@ app.get('/health', async (req: Request, res: Response) => {
     version: '1.0.0',
     dataSources,
     servicesAvailable: {
-      easybroker: !USE_MOCK_DATA,
-      scrapedo: HAS_SCRAPEDO,
+      pulppo: HAS_SCRAPEDO,
       database: HAS_DATABASE
     },
     databaseStatus
@@ -191,61 +182,6 @@ app.get('/health', async (req: Request, res: Response) => {
   sendSuccess(res, health);
 });
 
-// Helper function to fetch from EasyBroker API
-async function fetchFromEasyBroker(params: any) {
-  try {
-    const queryParams = new URLSearchParams();
-    
-    // Map our parameters to EasyBroker's expected format
-    if (params.city) {
-      queryParams.append('search[city]', params.city);
-    }
-    if (params.priceMin) {
-      queryParams.append('search[min_price]', params.priceMin);
-    }
-    if (params.priceMax) {
-      queryParams.append('search[max_price]', params.priceMax);
-    }
-    if (params.bedrooms) {
-      queryParams.append('search[bedrooms]', params.bedrooms);
-    }
-    // Only show published properties
-    queryParams.append('search[statuses][]', 'published');
-    queryParams.append('limit', '20');
-
-    const response = await axios.get(
-      `${EASYBROKER_API_URL}/properties?${queryParams.toString()}`,
-      {
-        headers: {
-          'X-Authorization': EASYBROKER_API_KEY,
-          'Accept': 'application/json'
-        },
-        timeout: 10000
-      }
-    );
-
-    // Transform EasyBroker response to our format
-    const properties = response.data.content?.map((prop: any) => ({
-      title: prop.title || 'Property',
-      price: prop.operations?.[0]?.amount || 0,
-      location: `${prop.location?.city || ''}, ${prop.location?.state || ''}`.trim(),
-      bedrooms: prop.bedrooms || 0,
-      link: prop.public_url || '#',
-      image: prop.title_image_url || 'https://via.placeholder.com/300x200',
-      source: 'easybroker',
-      id: prop.public_id
-    })) || [];
-
-    return {
-      properties,
-      total: response.data.pagination?.total || properties.length,
-      source: 'easybroker'
-    };
-  } catch (error: any) {
-    console.error('EasyBroker API error:', error.response?.data || error.message);
-    throw new Error('Failed to fetch from EasyBroker');
-  }
-}
 
 app.get('/properties', validatePropertySearch, async (req: Request, res: Response) => {
   try {
@@ -282,48 +218,7 @@ app.get('/properties', validatePropertySearch, async (req: Request, res: Respons
       }
     }
 
-    // Use mock data if no API key is configured
-    if (USE_MOCK_DATA) {
-      // Filter mock properties based on query parameters
-      let filtered = [...mockProperties];
-
-      if (city) {
-        const cityStr = String(city).toLowerCase();
-        filtered = filtered.filter(p => 
-          p.location.toLowerCase().includes(cityStr)
-        );
-      }
-
-      if (priceMin) {
-        filtered = filtered.filter(p => p.price >= Number(priceMin));
-      }
-
-      if (priceMax) {
-        filtered = filtered.filter(p => p.price <= Number(priceMax));
-      }
-
-      if (bedrooms) {
-        filtered = filtered.filter(p => p.bedrooms === Number(bedrooms));
-      }
-
-      allProperties.push(...filtered);
-      sources.push('mock');
-    } else {
-      // Fetch from EasyBroker API
-      try {
-        const result = await fetchFromEasyBroker({
-          city: city as string,
-          priceMin: priceMin as string,
-          priceMax: priceMax as string,
-          bedrooms: bedrooms as string
-        });
-        allProperties.push(...result.properties);
-        sources.push('easybroker');
-      } catch (error: any) {
-        console.error('EasyBroker error:', error.message);
-        errors.push({ source: 'easybroker', error: error.message });
-      }
-    }
+    // Skip EasyBroker - only use Pulppo scraping
 
     // Fetch from scraped sources if Scrape.do is configured
     if (HAS_SCRAPEDO && propertyScraper) {
@@ -336,7 +231,7 @@ app.get('/properties', validatePropertySearch, async (req: Request, res: Respons
         });
         
         allProperties.push(...scrapedProperties);
-        sources.push('vivanuncios');
+        sources.push('pulppo');
       } catch (error: any) {
         console.error('Scraping error:', error.message);
         errors.push({ source: 'scraping', error: error.message });
