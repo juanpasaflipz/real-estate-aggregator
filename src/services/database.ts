@@ -26,9 +26,19 @@ export class DatabaseService {
   public db: Knex;
 
   constructor(databaseUrl: string) {
+    // Parse the database URL and add SSL configuration for production
+    const connectionConfig = process.env.NODE_ENV === 'production' 
+      ? {
+          connectionString: databaseUrl,
+          ssl: {
+            rejectUnauthorized: false // Required for Render PostgreSQL
+          }
+        }
+      : databaseUrl;
+
     this.db = knex({
       client: 'pg',
-      connection: databaseUrl,
+      connection: connectionConfig,
       pool: { min: 2, max: 10 }
     });
   }
