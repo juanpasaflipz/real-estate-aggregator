@@ -381,32 +381,30 @@ app.get('/database/explore/:table?', async (req: Request, res: Response) => {
   }
 });
 
-// Test Vivanuncios scraping endpoint
-app.get('/test/vivanuncios', async (req: Request, res: Response) => {
+// Test Pulppo scraping endpoint
+app.get('/test/pulppo', async (req: Request, res: Response) => {
   if (!propertyScraper) {
     return sendError(res, 503, 'Property scraper not configured', 'SERVICE_UNAVAILABLE');
   }
 
   try {
-    console.log('Testing Vivanuncios scraping...');
-    const properties = await propertyScraper.scrapeVivanuncios({
-      city: req.query.city as string || 'mexico city',
+    console.log('Testing Pulppo scraping...');
+    const properties = await propertyScraper.scrapePulppo({
+      city: req.query.city as string || 'mexico',
       priceMin: req.query.priceMin as string,
       priceMax: req.query.priceMax as string,
       bedrooms: req.query.bedrooms as string
     });
 
     sendSuccess(res, {
-      source: 'vivanuncios',
+      source: 'pulppo',
       count: properties.length,
       properties: properties.slice(0, 5), // Return first 5 for testing
-      testUrl: propertyScraper.buildVivanunciosUrl({
-        city: req.query.city as string || 'mexico city'
-      })
+      message: properties.length > 0 ? 'Successfully scraped properties' : 'No properties found - Pulppo requires JS rendering'
     });
   } catch (error: any) {
-    console.error('Vivanuncios test error:', error);
-    sendError(res, 500, `Vivanuncios scraping failed: ${error.message}`, 'SCRAPE_ERROR');
+    console.error('Pulppo test error:', error);
+    sendError(res, 500, `Pulppo scraping failed: ${error.message}`, 'SCRAPE_ERROR');
   }
 });
 

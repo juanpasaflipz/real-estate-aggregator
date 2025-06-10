@@ -24,7 +24,7 @@ export class PulppoScraper {
       '[class*="listing-card"]'
     ];
 
-    let $listings = $();
+    let $listings = $([]);
     for (const selector of selectors) {
       $listings = $(selector);
       if ($listings.length > 0) {
@@ -115,7 +115,7 @@ export class PulppoScraper {
           price,
           currency: 'MXN',  // Pulppo typically shows prices in MXN
           location,
-          bedrooms,
+          bedrooms: bedrooms || 0,  // Default to 0 if not found
           bathrooms,
           size,
           propertyType,
