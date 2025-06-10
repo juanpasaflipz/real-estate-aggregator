@@ -30,9 +30,16 @@ export class PropertyScraper {
         geoCode: 'mx'  // Use Mexico geo-location
       });
 
+      // Check if we got a valid response
+      if (html.includes('challenge-platform') || html.includes('Access Denied')) {
+        console.error('Vivanuncios blocked by Cloudflare/security');
+        return [];
+      }
+      
       return this.parseVivanunciosHTML(html);
     } catch (error: any) {
       console.error('Vivanuncios scraping error:', error.message);
+      console.error('URL attempted:', url);
       return [];
     }
   }
@@ -57,16 +64,18 @@ export class PropertyScraper {
 
   public buildVivanunciosUrl(params: any): string {
     const cityMap: Record<string, string> = {
-      'mexico': 'ciudad-de-mexico/v1c1097l11518p1',
-      'mexico city': 'ciudad-de-mexico/v1c1097l11518p1',
-      'ciudad de mexico': 'ciudad-de-mexico/v1c1097l11518p1',
-      'guadalajara': 'guadalajara/v1c1097l11308p1',
-      'monterrey': 'monterrey/v1c1097l11314p1',
-      'cancun': 'cancun/v1c1097l11302p1'
+      'mexico': 'ciudad-de-mexico',
+      'mexico city': 'ciudad-de-mexico',
+      'ciudad de mexico': 'ciudad-de-mexico',
+      'guadalajara': 'guadalajara',
+      'monterrey': 'monterrey',
+      'cancun': 'cancun'
     };
 
-    const cityPath = cityMap[params.city?.toLowerCase() || ''] || 'v1c1097l1p1';
-    let url = `https://www.vivanuncios.com.mx/s-venta-inmuebles/${cityPath}`;
+    const citySlug = cityMap[params.city?.toLowerCase() || ''] || '';
+    let url = citySlug 
+      ? `https://www.vivanuncios.com.mx/s-venta-inmuebles/${citySlug}/v1c1097l1p1`
+      : `https://www.vivanuncios.com.mx/s-venta-inmuebles/v1c1097p1`;
 
     const queryParams = [];
     if (params.priceMin) queryParams.push(`pr=${params.priceMin},`);
