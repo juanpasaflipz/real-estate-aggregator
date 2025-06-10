@@ -145,7 +145,7 @@ app.get('/health', (req: Request, res: Response) => {
   const dataSources = [];
   if (USE_MOCK_DATA) dataSources.push('mock');
   if (!USE_MOCK_DATA) dataSources.push('easybroker');
-  if (HAS_SCRAPEDO) dataSources.push('vivanuncios', 'inmuebles24');
+  if (HAS_SCRAPEDO) dataSources.push('vivanuncios');
   
   const health = {
     status: 'healthy',
@@ -279,7 +279,7 @@ app.get('/properties', validatePropertySearch, async (req: Request, res: Respons
         });
         
         allProperties.push(...scrapedProperties);
-        sources.push('vivanuncios', 'inmuebles24');
+        sources.push('vivanuncios');
       } catch (error: any) {
         console.error('Scraping error:', error.message);
         errors.push({ source: 'scraping', error: error.message });

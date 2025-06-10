@@ -37,31 +37,6 @@ export class PropertyScraper {
     }
   }
 
-  /**
-   * Scrape properties from Inmuebles24
-   */
-  async scrapeInmuebles24(params: {
-    city?: string;
-    priceMin?: string;
-    priceMax?: string;
-    bedrooms?: string;
-  }): Promise<Property[]> {
-    const url = this.buildInmuebles24Url(params);
-    
-    try {
-      const html = await this.scrapeDoService.scrape({
-        url,
-        render: true,
-        super: true,
-        geoCode: 'mx'
-      });
-
-      return this.parseInmuebles24HTML(html);
-    } catch (error: any) {
-      console.error('Inmuebles24 scraping error:', error.message);
-      return [];
-    }
-  }
 
   /**
    * Scrape from multiple sources
@@ -72,23 +47,12 @@ export class PropertyScraper {
     priceMax?: string;
     bedrooms?: string;
   }): Promise<Property[]> {
-    const promises = [
-      this.scrapeVivanuncios(params),
-      this.scrapeInmuebles24(params)
-    ];
-
-    const results = await Promise.allSettled(promises);
-    const allProperties: Property[] = [];
-
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        allProperties.push(...result.value);
-      } else {
-        console.error(`Source ${index} failed:`, result.reason);
-      }
-    });
-
-    return allProperties;
+    try {
+      return await this.scrapeVivanuncios(params);
+    } catch (error: any) {
+      console.error('Scraping failed:', error.message);
+      return [];
+    }
   }
 
   private buildVivanunciosUrl(params: any): string {
@@ -116,21 +80,6 @@ export class PropertyScraper {
     return url;
   }
 
-  private buildInmuebles24Url(params: any): string {
-    const cityMap: Record<string, string> = {
-      'mexico': 'distrito-federal',
-      'mexico city': 'distrito-federal',
-      'ciudad de mexico': 'distrito-federal',
-      'guadalajara': 'jalisco/guadalajara',
-      'monterrey': 'nuevo-leon/monterrey',
-      'cancun': 'quintana-roo/benito-juarez'
-    };
-
-    const cityPath = cityMap[params.city?.toLowerCase() || ''] || 'mexico';
-    let url = `https://www.inmuebles24.com/inmuebles-en-venta-en-${cityPath}.html`;
-
-    return url;
-  }
 
   private parseVivanunciosHTML(html: string): Property[] {
     const listings = parseVivanunciosHTML(html);
@@ -182,51 +131,6 @@ export class PropertyScraper {
     return properties;
   }
 
-  private parseInmuebles24HTML(html: string): Property[] {
-    const $ = cheerio.load(html);
-    const properties: Property[] = [];
-
-    $('.posting-card').each((_, element) => {
-      try {
-        const $el = $(element);
-        
-        const title = $el.find('.posting-title').text().trim();
-        const priceText = $el.find('.price').text().trim();
-        const location = $el.find('.posting-location').text().trim();
-        const link = $el.find('a').first().attr('href') || '';
-        const features = $el.find('.posting-features').text();
-        
-        // Try to get multiple images
-        const images: string[] = [];
-        $el.find('img').each((i, img) => {
-          const src = $(img).attr('src') || $(img).attr('data-src');
-          if (src && !src.includes('placeholder')) {
-            images.push(src);
-          }
-        });
-
-        if (title && priceText) {
-          properties.push({
-            id: `IN24-${this.propertyIdCounter++}`,
-            title,
-            price: this.parsePrice(priceText),
-            currency: priceText.includes('USD') || priceText.includes('US$') ? 'USD' : 'MXN',
-            location: location || 'Mexico',
-            bedrooms: this.extractBedrooms(features),
-            link: link.startsWith('http') ? link : `https://www.inmuebles24.com${link}`,
-            image: images[0] || 'https://via.placeholder.com/300x200',
-            images: images.length > 0 ? images : ['https://via.placeholder.com/300x200'],
-            source: 'inmuebles24',
-            createdAt: new Date().toISOString()
-          });
-        }
-      } catch (err) {
-        console.error('Parse error:', err);
-      }
-    });
-
-    return properties.slice(0, 20); // Limit to 20 properties
-  }
 
   private parsePrice(priceText: string): number {
     const cleaned = priceText
